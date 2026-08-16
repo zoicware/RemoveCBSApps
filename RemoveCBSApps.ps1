@@ -140,35 +140,45 @@ function Disable-Resume {
     )
 
     Grant-AdminAccess $XmlPath
-    $XML = [System.Xml.XmlDocument]::new()
-    $XML.PreserveWhitespace = $true
-    $XML.Load($XmlPath)
+    try {
+        $XML = [System.Xml.XmlDocument]::new()
+        $XML.PreserveWhitespace = $true
+        $XML.Load($XmlPath)
 
-    $xmlNode = $XML.Package.Applications.Application | Where-Object { $_.Id -Eq 'CrossDeviceResumeApp' }
-    if ($xmlNode) {
-        $extensions = $xmlNode.Extensions
-        foreach ($ext in $extensions.Extension) {
-            foreach ($appExt in $ext.AppExtension) {
-                if ($appExt.Name -eq 'com.microsoft.windows.extension.shelluihost') {
-                    $props = $appExt.Properties
-                    if ($props.LaunchPolicy -ne $null) {
-                        Write-Host 'Setting LaunchPolicy to 0...'
-                        $props.LaunchPolicy = '0'
-                    }
-                    if ($props.LogonPolicy -ne $null) {
-                        Write-Host 'Setting LogonPolicy to 0...'
-                        $props.LogonPolicy = '0'
-                    }
-                    if ($props.LaunchTimeoutPolicy -ne $null) {
-                        Write-Host 'Setting LaunchTimeoutPolicy to 0...'
-                        $props.LaunchTimeoutPolicy = '0'
+        $xmlNode = $XML.Package.Applications.Application | Where-Object { $_.Id -Eq 'CrossDeviceResumeApp' }
+        if ($xmlNode) {
+            $changed = $false
+            $extensions = $xmlNode.Extensions
+            foreach ($ext in $extensions.Extension) {
+                foreach ($appExt in $ext.AppExtension) {
+                    if ($appExt.Name -eq 'com.microsoft.windows.extension.shelluihost') {
+                        $props = $appExt.Properties
+                        if ($props.LaunchPolicy -ne $null -and $props.LaunchPolicy -ne '0') {
+                            Write-Host 'Setting LaunchPolicy to 0...'
+                            $props.LaunchPolicy = '0'
+                            $changed = $true
+                        }
+                        if ($props.LogonPolicy -ne $null -and $props.LogonPolicy -ne '0') {
+                            Write-Host 'Setting LogonPolicy to 0...'
+                            $props.LogonPolicy = '0'
+                            $changed = $true
+                        }
+                        if ($props.LaunchTimeoutPolicy -ne $null -and $props.LaunchTimeoutPolicy -ne '0') {
+                            Write-Host 'Setting LaunchTimeoutPolicy to 0...'
+                            $props.LaunchTimeoutPolicy = '0'
+                            $changed = $true
+                        }
                     }
                 }
             }
+            if ($changed) {
+                $XML.Save($XmlPath)
+            }
         }
-        $XML.Save($XmlPath)
     }
-    Restore-TIOwner $XmlPath
+    finally {
+        Restore-TIOwner $XmlPath
+    }
 }
 
 function Bump-ManifestVersion {
