@@ -22,7 +22,7 @@ After the script completes, the next reboot will replace the database file and r
 
 Since build `26200.8514` CrossDeviceResume.exe no longer respects the feature mangement id to disable it.
 
-Vivetool id (still found in the appxmanifest.xml):
+Velocity id (still found in the appxmanifest.xml):
 
 **Original ID**
 ```powershell
