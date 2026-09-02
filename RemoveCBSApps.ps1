@@ -242,15 +242,29 @@ function Schedule-DeleteOnReboot {
     }
 }
 
+function Check-CBSVer {
+    param(
+        $expectedVer
+    )
+    $currentVer = (Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.Client.CBS').Version
+    if ($expectedVer -ne $currentVer) {
+        return $currentVer
+    }
+    else {
+        return $null
+    }
+    
+}
+
 
 Write-Host 'Getting MicrosoftWindows.Client.CBS...'
 
 $pkg = Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.Client.CBS' | Select-Object -First 1
 $InstallManifest = Join-Path $pkg.InstallLocation 'AppxManifest.xml'
-$RepoManifest = "C:\ProgramData\Microsoft\Windows\AppRepository\$($pkg.PackageFullName).xml"
+$RepoManifest = "$env:ProgramData\Microsoft\Windows\AppRepository\$($pkg.PackageFullName).xml"
 $SRDir = Split-Path $SRPath
 $NewSRPath = Join-Path $SRDir 'StateRepository-Machine.srd.new'
-$WorkSRPath = Join-Path $env:TEMP 'ClientCBS-SR.work.srd'
+$WorkSRPath = Join-Path (([System.IO.Path]::GetTempPath())).trimend('\') 'ClientCBS-SR.work.srd'
 
 if ($DisableResume) {
     Disable-Resume -xmlPath $InstallManifest
@@ -260,7 +274,16 @@ if ($DisableResume) {
     $ver = Bump-ManifestVersion -xmlPath $InstallManifest
     Write-Host "Updated Client.CBS Version to $ver..."
     Add-AppxPackage -Register -DisableDevelopmentMode -Path $InstallManifest -ForceApplicationShutdown -ForceUpdateFromAnyVersion 
-    Write-Host 'DONE! CrossDeviceResume will not run on next reboot!' -ForegroundColor Green
+    $result = Check-CBSVer -expectedVer $ver
+    if ($result) {
+        Write-Host 'Client.CBS did not update properly!' -ForegroundColor Red
+        Write-host "Expected Version: $ver" -ForegroundColor Red
+        Write-Host "Current Version: $result" -ForegroundColor Red
+    }
+    else {
+        Write-Host 'DONE! CrossDeviceResume will not run on next reboot!' -ForegroundColor Green
+    }
+    
 }
 else {
     Write-Host 'Patching InstallLocation AppxManifest.xml...'
