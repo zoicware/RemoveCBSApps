@@ -256,6 +256,24 @@ function Check-CBSVer {
     
 }
 
+function Create-KillResumeTask {
+    #need to apply these velocity ids so that resume doesnt spawn after being killed
+    Reg.exe add 'HKLM\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\8\1387020943' /v 'EnabledState' /t REG_DWORD /d '1' /f *>$null
+    Reg.exe add 'HKLM\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\8\3974600846' /v 'EnabledState' /t REG_DWORD /d '1' /f *>$null
+    Reg.exe add 'HKLM\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\8\2196866703' /v 'EnabledState' /t REG_DWORD /d '1' /f *>$null
+    Reg.exe add 'HKCU\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration' /v 'IsResumeAllowed' /t REG_DWORD /d '0' /f *>$null
+    Reg.exe add 'HKCU\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration' /v 'IsOneDriveResumeAllowed' /t REG_DWORD /d '0' /f *>$null
+    Reg.exe add 'HKLM\SOFTWARE\Microsoft\PolicyManager\default\Connectivity\DisableCrossDeviceResume' /v 'value' /t REG_DWORD /d '1' /f *>$null
+
+    $action = New-ScheduledTaskAction -Execute 'taskkill.exe' -Argument '/im CrossDeviceResume.exe /f'
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    $trigger.Delay = 'PT5S' # expects valid ISO 8601 time format
+    $principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18'
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries 
+    Unregister-ScheduledTask -TaskName 'Kill-CrossDeviceResume' -ErrorAction SilentlyContinue -Confirm:$false
+    Register-ScheduledTask -TaskPath '\' -TaskName 'Kill-CrossDeviceResume' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+}
+
 
 Write-Host 'Getting MicrosoftWindows.Client.CBS...'
 
@@ -272,13 +290,32 @@ if ($DisableResume) {
         Disable-Resume -xmlPath $RepoManifest
     }
     $ver = Bump-ManifestVersion -xmlPath $InstallManifest
-    Write-Host "Updated Client.CBS Version to $ver..."
+    Write-Host "Updating Client.CBS Version to $ver..."
     Add-AppxPackage -Register -DisableDevelopmentMode -Path $InstallManifest -ForceApplicationShutdown -ForceUpdateFromAnyVersion 
     $result = Check-CBSVer -expectedVer $ver
     if ($result) {
         Write-Host 'Client.CBS did not update properly!' -ForegroundColor Red
         Write-host "Expected Version: $ver" -ForegroundColor Red
         Write-Host "Current Version: $result" -ForegroundColor Red
+
+        Write-Host 'Apply startup task to kill CrossDeviceResume? [Y/N]' -ForegroundColor Yellow
+        $invalidOption = $false
+        do {
+            $choice = ($Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')).Character.toString().toUpper()
+            if ($choice -ne 'Y' -and $choice -ne 'N') {
+                $invalidOption = $true
+                Write-Host 'Invalid Option! Try again.' -ForegroundColor Red
+            }
+            else {
+                $invalidOption = $false
+            }
+        }while ($invalidOption)
+        
+        if ($choice -eq 'Y') {
+            Write-Host 'Creating task to kill CrossDeviceResume on startup...' -ForegroundColor Green
+            Create-KillResumeTask
+        }
+
     }
     else {
         Write-Host 'DONE! CrossDeviceResume will not run on next reboot!' -ForegroundColor Green
